@@ -40,7 +40,7 @@ def parse_rpm_changelog(io, object = nil)
       begin
         item.timestamp = Date::parse $1
       rescue ArgumentError
-        puts " HUH #{object}: #{line}"
+        $stderr.puts " HUH #{object}: #{line}"
         item.timestamp = Date.today
         # TODO recover better
       end
@@ -61,18 +61,18 @@ end
 def main
   all = []
   rpmnames = `rpm -qa`.split    # TODO replace -a by ARGV
-  puts "#{rpmnames.size} packages"
+  $stderr.puts "#{rpmnames.size} packages"
   ENV["LANG"] = "C"             # parse C dates
   # TODO paralellize the popens?
   rpmnames.each do |rpm|
     io = IO.popen("rpm -q --changelog #{rpm}")
     all += parse_rpm_changelog(io, rpm)
     io.close
-    print "."
-    $stdout.flush
+    $stderr.print "."
+    $stderr.flush
   end
-  print "\n"
-  puts "#{all.size} changes"
+  $stderr.print "\n"
+  $stderr.puts "#{all.size} changes"
   sorted = all.sort_by {|e| [e.timestamp, e.lineno] }
   sorted.reverse_each {|e| print e }
 end
