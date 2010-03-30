@@ -73,7 +73,8 @@ def main
   end
   $stderr.print "\n"
   $stderr.puts "#{all.size} changes"
-  sorted = all.sort_by {|e| [e.timestamp, e.lineno] }
+  # negate: bigger lineno means smaller timestamp
+  sorted = all.sort_by {|e| [e.timestamp, -e.lineno] }
   sorted.reverse_each {|e| print e }
 end
 
