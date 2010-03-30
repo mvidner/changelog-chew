@@ -60,7 +60,7 @@ end
 
 def main
   all = []
-  rpmnames = `rpm -qa`.split    # TODO replace -a by ARGV
+  rpmnames = `rpm -qa #{ARGV.join ' '}`.split
   $stderr.puts "#{rpmnames.size} packages"
   ENV["LANG"] = "C"             # parse C dates
   # TODO paralellize the popens?
