@@ -60,7 +60,13 @@ end
 
 def main
   all = []
-  rpmnames = `rpm -qa #{ARGV.join ' '}`.split
+  if ARGV[0] == "-w"
+    query = "'*yast*' '*ruby*'"
+  else
+    query = ARGV.join ' '
+  end
+  puts "RPM ChangeLog for #{query || 'all packages'}"
+  rpmnames = `rpm -qa #{query}`.split
   $stderr.puts "#{rpmnames.size} packages"
   ENV["LANG"] = "C"             # parse C dates
   # TODO paralellize the popens?
@@ -74,7 +80,7 @@ def main
   $stderr.print "\n"
   $stderr.puts "#{all.size} changes"
   # negate: bigger lineno means smaller timestamp
-  sorted = all.sort_by {|e| [e.timestamp, -e.lineno] }
+  sorted = all.sort_by {|e| [e.timestamp, e.object, -e.lineno] }
   sorted.reverse_each {|e| print e }
 end
 
