@@ -3,6 +3,7 @@
 # license: http://en.wikipedia.org/wiki/MIT_License
 
 require "date"
+require "optparse"
 require "thread"
 # require "pp"
 
@@ -59,32 +60,60 @@ def parse_rpm_changelog(io, object = nil)
   items
 end
 
-def main
+# returns a list of Changes
+def query_rpm_changelog(rpm)
+  io = IO.popen("rpm -q --changelog #{rpm}")
+  one_log = parse_rpm_changelog(io, rpm)
+  io.close
+  $stderr.print "."
+  $stderr.flush
+  one_log
+end
+
+# return an unsorted list of all changes
+def collect_in_sequence(rpmnames)
+  all = []
+  rpmnames.each do |rpm|
+    all += query_rpm_changelog(rpm)
+  end
+  all
+end
+
+# return an unsorted list of all changes
+def collect_in_parallel(rpmnames)
   all = []
   jobs = []
-  if ARGV[0] == "-w"
-    query = "'*yast*' '*ruby*'"
-  else
-    query = ARGV.join ' '
-  end
-  puts "RPM ChangeLog for #{query || 'all packages'}"
-  rpmnames = `rpm -qa #{query}`.split
-  $stderr.puts "#{rpmnames.size} packages"
-  ENV["LANG"] = "C"             # parse C dates
   mutex = Mutex.new
   rpmnames.each do |rpm|
     jobs << Thread.new do
-      io = IO.popen("rpm -q --changelog #{rpm}")
-      one_log = parse_rpm_changelog(io, rpm)
+      one_log = query_rpm_changelog(rpm)
       mutex.synchronize do
         all += one_log
       end
-      io.close
-      $stderr.print "."
-      $stderr.flush
     end
   end
   jobs.each do |thread| thread.join end
+  all
+end
+
+def main
+  query = nil
+  threads = true
+  OptionParser.new do |opts|
+    opts.on "-w" do query = "'*yast*' '*ruby*'" end
+    opts.on "-n" do threads = false end
+  end.parse!
+  query ||= ARGV.join ' '
+  description = query.empty? ? "all packages" : query
+  puts "RPM ChangeLog for #{description}"
+  rpmnames = `rpm -qa #{query}`.split
+  $stderr.puts "#{rpmnames.size} packages"
+  ENV["LANG"] = "C"             # parse C dates
+  if threads
+    all = collect_in_parallel(rpmnames)
+  else
+    all = collect_in_sequence(rpmnames)
+  end
   $stderr.print "\n"
   $stderr.puts "#{all.size} changes"
   # negate: bigger lineno means smaller timestamp
