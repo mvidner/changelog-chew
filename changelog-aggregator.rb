@@ -3,6 +3,7 @@
 # license: http://en.wikipedia.org/wiki/MIT_License
 
 require "date"
+require "thread"
 # require "pp"
 
 class Change
@@ -60,6 +61,7 @@ end
 
 def main
   all = []
+  jobs = []
   if ARGV[0] == "-w"
     query = "'*yast*' '*ruby*'"
   else
@@ -69,14 +71,20 @@ def main
   rpmnames = `rpm -qa #{query}`.split
   $stderr.puts "#{rpmnames.size} packages"
   ENV["LANG"] = "C"             # parse C dates
-  # TODO paralellize the popens?
+  mutex = Mutex.new
   rpmnames.each do |rpm|
-    io = IO.popen("rpm -q --changelog #{rpm}")
-    all += parse_rpm_changelog(io, rpm)
-    io.close
-    $stderr.print "."
-    $stderr.flush
+    jobs << Thread.new do
+      io = IO.popen("rpm -q --changelog #{rpm}")
+      one_log = parse_rpm_changelog(io, rpm)
+      mutex.synchronize do
+        all += one_log
+      end
+      io.close
+      $stderr.print "."
+      $stderr.flush
+    end
   end
+  jobs.each do |thread| thread.join end
   $stderr.print "\n"
   $stderr.puts "#{all.size} changes"
   # negate: bigger lineno means smaller timestamp
