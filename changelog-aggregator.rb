@@ -24,65 +24,55 @@ class Change
   end
 end
 
+TERMINATOR = "changelog-aggregator-terminator\n"
+QUERYFORMAT = "[%{NAME}\n%{CHANGELOGTIME}\n%{CHANGELOGNAME}\n%{CHANGELOGTEXT}\n#{TERMINATOR}]"
+
 # parses an IO object
-# returns a list of Changes (where :object is supplied from outside)
-# if a block is given, returns [] and instead yields each Change
-def parse_rpm_changelog(io, object = nil)
-  items = []
+# yields each Change
+def parse_custom_rpm_changelog(io)
   item = nil
+  expect = :name
   io.each_line do |line|
-    next if line =~ /^\S*$/
-    # author can contain space :-/
-    # heuristic: date ends in a 4-digit year
-    if line =~ /^\* (.*\d\d\d\d) (.*)/
-      # finish previous item
-      if block_given?
-        yield item unless item.nil?
-      else
-        items << item unless item.nil?
-      end
-      # new item
+    case expect
+    when :name
       item = Change.new
-      begin
-        item.timestamp = Date::parse $1
-      rescue ArgumentError
-        $stderr.puts " HUH #{object}: #{line}"
-        item.timestamp = Date.today
-        # TODO recover better
-      end
-      item.author = $2
+      item.object = line.chomp
       item.lineno = io.lineno
-      item.object = object
-    elsif not item.nil?
-      # add to description of current item
-      item.description ||= ""
-      item.description += line
+      item.description = ""
+      expect = :timestamp
+    when :timestamp
+      item.timestamp = Time.at(line.to_i)
+      expect = :author
+    when :author
+      item.author = line.chomp
+      expect = :description
+    when :description
+      if line == TERMINATOR
+        yield item
+        expect = :name
+      else
+        item.description += line
+      end
     end
   end
-  # flush
-  if block_given?
-    yield item unless item.nil?
-  else
-    items << item unless item.nil?
-  end
-  items
 end
 
 # yields Changes
 def query_rpm_changelog(rpm, &block)
-  io = IO.popen("rpm -q --changelog #{rpm}")
-  one_log = parse_rpm_changelog(io, rpm, &block)
+  io = IO.popen("rpm -q --qf \"#{QUERYFORMAT}\" #{rpm}")
+  parse_custom_rpm_changelog(io, &block)
   io.close
   $stderr.print "."
   $stderr.flush
-  one_log
 end
 
 # return an unsorted list of all changes
 def collect_in_sequence(rpmnames)
   all = []
   rpmnames.each do |rpm|
-    all += query_rpm_changelog(rpm)
+    query_rpm_changelog(rpm) do |item|
+      all << item
+    end
   end
   all
 end
