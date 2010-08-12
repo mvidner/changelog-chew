@@ -25,8 +25,8 @@ class Change
 end
 
 # parses an IO object
-# returns a list of Changes (where :object is nil)
-# TODO optionally yield them instead
+# returns a list of Changes (where :object is supplied from outside)
+# if a block is given, returns [] and instead yields each Change
 def parse_rpm_changelog(io, object = nil)
   items = []
   item = nil
@@ -36,7 +36,11 @@ def parse_rpm_changelog(io, object = nil)
     # heuristic: date ends in a 4-digit year
     if line =~ /^\* (.*\d\d\d\d) (.*)/
       # finish previous item
-      items << item unless item.nil?
+      if block_given?
+        yield item unless item.nil?
+      else
+        items << item unless item.nil?
+      end
       # new item
       item = Change.new
       begin
@@ -56,14 +60,18 @@ def parse_rpm_changelog(io, object = nil)
     end
   end
   # flush
-  items << item unless item.nil?
+  if block_given?
+    yield item unless item.nil?
+  else
+    items << item unless item.nil?
+  end
   items
 end
 
-# returns a list of Changes
-def query_rpm_changelog(rpm)
+# yields Changes
+def query_rpm_changelog(rpm, &block)
   io = IO.popen("rpm -q --changelog #{rpm}")
-  one_log = parse_rpm_changelog(io, rpm)
+  one_log = parse_rpm_changelog(io, rpm, &block)
   io.close
   $stderr.print "."
   $stderr.flush
@@ -86,9 +94,10 @@ def collect_in_parallel(rpmnames)
   mutex = Mutex.new
   rpmnames.each do |rpm|
     jobs << Thread.new do
-      one_log = query_rpm_changelog(rpm)
-      mutex.synchronize do
-        all += one_log
+      query_rpm_changelog(rpm) do |item|
+        mutex.synchronize do
+          all << item
+        end
       end
     end
   end
