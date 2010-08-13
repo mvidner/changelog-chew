@@ -4,7 +4,6 @@
 
 require "date"
 require "optparse"
-require "thread"
 # require "pp"
 
 class Change
@@ -58,41 +57,10 @@ def parse_custom_rpm_changelog(io)
 end
 
 # yields Changes
-def query_rpm_changelog(rpm, &block)
-  io = IO.popen("rpm -q --qf \"#{QUERYFORMAT}\" #{rpm}")
+def query_rpm_changelog(query, &block)
+  io = IO.popen("rpm -qa --qf \"#{QUERYFORMAT}\" #{query}")
   parse_custom_rpm_changelog(io, &block)
   io.close
-  $stderr.print "."
-  $stderr.flush
-end
-
-# return an unsorted list of all changes
-def collect_in_sequence(rpmnames)
-  all = []
-  rpmnames.each do |rpm|
-    query_rpm_changelog(rpm) do |item|
-      all << item
-    end
-  end
-  all
-end
-
-# return an unsorted list of all changes
-def collect_in_parallel(rpmnames)
-  all = []
-  jobs = []
-  mutex = Mutex.new
-  rpmnames.each do |rpm|
-    jobs << Thread.new do
-      query_rpm_changelog(rpm) do |item|
-        mutex.synchronize do
-          all << item
-        end
-      end
-    end
-  end
-  jobs.each do |thread| thread.join end
-  all
 end
 
 def main
@@ -105,13 +73,14 @@ def main
   query ||= ARGV.join ' '
   description = query.empty? ? "all packages" : query
   puts "RPM ChangeLog for #{description}"
-  rpmnames = `rpm -qa #{query}`.split
-  $stderr.puts "#{rpmnames.size} packages"
   ENV["LANG"] = "C"             # parse C dates
-  if threads
-    all = collect_in_parallel(rpmnames)
-  else
-    all = collect_in_sequence(rpmnames)
+  all = []
+  query_rpm_changelog(query) do |item|
+    all << item
+    if all.size % 100 == 0
+      $stderr.print "."
+      $stderr.flush
+    end
   end
   $stderr.print "\n"
   $stderr.puts "#{all.size} changes"
