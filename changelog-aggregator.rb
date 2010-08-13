@@ -26,6 +26,13 @@ end
 TERMINATOR = "changelog-aggregator-terminator\n"
 QUERYFORMAT = "[%{NAME}\n%{CHANGELOGTIME}\n%{CHANGELOGNAME}\n%{CHANGELOGTEXT}\n#{TERMINATOR}]"
 
+# an extension
+class Time
+  def to_date
+    Date.new(self.year, self.month, self.day)
+  end
+end
+
 # parses an IO object
 # yields each Change
 def parse_custom_rpm_changelog(io)
@@ -40,7 +47,7 @@ def parse_custom_rpm_changelog(io)
       item.description = ""
       expect = :timestamp
     when :timestamp
-      item.timestamp = Time.at(line.to_i)
+      item.timestamp = Time.at(line.to_i).to_date
       expect = :author
     when :author
       item.author = line.chomp
