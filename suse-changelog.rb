@@ -1,10 +1,9 @@
 #! /usr/bin/env ruby
-# aggregate changelogs for RPMs: either -q --changelog or (TODO) SUSE .changes
+# SUSE .changes merge tool for Git
 # license: http://en.wikipedia.org/wiki/MIT_License
 
 require "date"
 require "optparse"
-# require "pp"
 require "time"
 
 class Change
@@ -28,18 +27,34 @@ class SUSEChange < Change
   HEADER = "-" * 67
   HEADER_NEWLINE = HEADER + "\n"
 
-  def to_s
-    HEADER_NEWLINE +
+  # Preserve the textual format of the timestamp
+  # in case we need to exactly reproduce the original changelog.
+  # Sample differences: "Feb  1" vs "Feb 01", wrong weekday.
+  attr_accessor :timestamp_text
+
+  def timestamp_s(options)
+    if options[:timestamp] == :original # or :reparsed
+      timestamp_text
+    else
       # `vc` calls `date` and this is the default timestamp format:
       # https://www.gnu.org/software/coreutils/manual/html_node/date-invocation.html
-      "#{timestamp.strftime '%a %b %e %H:%M:%S %Z %Y'} - #{author}\n" +
+      timestamp.strftime '%a %b %e %H:%M:%S %Z %Y'
+    end
+  end
+
+  def to_s(options = {})
+    HEADER_NEWLINE +
+      "#{timestamp_s(options)} - #{author}\n" +
       description
   end
 end
 
 class SUSEChangeLog
 
-  attr_accessor :items          #
+  # [Array<SUSEChange>]
+  attr_accessor :items
+  # [Bool], default true
+  attr_accessor :timestamps_verbatim
 
   def self.new_from_filename(filename)
     cl = self.new
@@ -51,6 +66,7 @@ class SUSEChangeLog
 
   def initialize
     @items = []
+    @timestamps_verbatim = true
   end
 
   def parse_io(io)
@@ -76,6 +92,7 @@ class SUSEChangeLog
           item = SUSEChange.new
           item.lineno = io.lineno
           item.description = ""
+          item.timestamp_text = $1
           item.timestamp = Time.parse($1)
           item.author = $2
           expect = :description
@@ -98,11 +115,99 @@ class SUSEChangeLog
   def to_s
     s = ""
     items.each do |i|
-      s << i.to_s
+      s << i.to_s(:timestamp => (timestamps_verbatim ? :original : :reparsed))
     end
     s
   end
+
+  def +(other)
+    result = self.dup           # copy timestamps_verbatim
+    result.items = self.items + other.items
+    result
+  end
+
+  # Subtract changelogs.
+  def -(other)
+    # assume self has some added entries at beginning
+    result = self.dup
+    # DIRTY: do it by length, don't compare the actual contents
+    result.items = self.items.slice(0, self.items.size - other.items.size)
+    result
+  end
+
+  # Are the timestamps in reverse chronological order?
+  # (Duplicate timestamps are OK)
+  def monotonic?
+    prev_time = nil             # argh name
+    items.each do |i|
+      if prev_time and prev_time < i.timestamp
+        return false
+      end
+      prev_time = i.timestamp
+    end
+    true
+  end
 end
 
-cl = SUSEChangeLog.new_from_filename ARGV[0]
-print cl
+# $verbose = false
+$output = nil                   # to become CURRENT
+marker_size = 7
+
+opts = OptionParser.new "Usage: #{$0} [options] CURRENT COMMON OTHER"
+# opts.on("-v", "--verbose", "Run verbosely") {|v| $verbose = v }
+opts.on("-o", "--output FILE", "Send the result to FILE instead of to CURRENT") {|v| $output = v }
+opts.on("-p", "--print", "Send the result to stdout instead of to CURRENT") {|v| $output = "/dev/stdout" }
+
+opts.on_tail("-h", "--help", "Show this message") do
+  puts opts
+  exit
+end
+
+args = opts.parse(ARGV)
+if args.size == 1
+  cl = SUSEChangeLog.new_from_filename args[0]
+  cl.timestamps_verbatim = false
+  print cl
+elsif args.size == 3
+  # TODO --merge, like merge(1), mimic its interface
+
+  # "The merge driver is expected to leave the result of the merge in the file
+  # named with %A [current] by overwriting it, and exit with zero status if it
+  # managed to merge them cleanly, or non-zero if there were conflicts."
+
+  current = SUSEChangeLog.new_from_filename args[0]
+  common  = SUSEChangeLog.new_from_filename args[1]
+  other   = SUSEChangeLog.new_from_filename args[2]
+
+  status = 0
+#  puts common.items.last
+#  p current.items.last
+#  p common.items.last.to_s == current.items.last.to_s
+
+# TODO one or both(?) branches may have no diff, or same(?) diff
+
+#  harcoding the reverse-chronological order is OK, all changelogs have that?
+  added = other - common
+  merged = added + current
+  File.open($output || args[0], "w") do |f|
+    if merged.monotonic?
+      f.write(merged)
+    else
+      $stderr.puts "#{$0}: not monotonic"
+      status = 1 # signal merge failure
+      f.puts "<" * marker_size
+      f.puts "=" * marker_size
+      f.write(added)
+      f.puts ">" * marker_size
+      f.write(current)
+    end
+  end
+  # TODO unless -q --quiet
+  if status == 1
+    $stderr.puts "#{$0}: warning: conflicts during merge"
+  end
+  exit status
+else
+  puts opts
+  exit 2
+end
