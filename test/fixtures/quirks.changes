@@ -1,0 +1,26 @@
+-------------------------------------------------------------------
+Wed Dec 14 15:37:12 GMT 2011 - mgorman@suse.de
+
+- nonlocal timezone
+
+-------------------------------------------------------------------
+Thu Jun 02 09:58:11 CEST 2011 - ada@example.com
+
+- nonstandard time format: uses a leading zero in day of month
+
+-------------------------------------------------------------------
+Fri Apr 15 12:00:00 CEST 2009 - jane@example.com
+
+- day of week inconsistent with rest of date
+
+-------------------------------------------------------------------
+Mon Dec 22 13:16:02 CET 2008 - mvidner@suse.cz
+
+- Reverted r50800 which, in an attempt to fix another bug, encoded to
+  UTF-8 once too many, breaking i18n going thru Perl agents (bnc#448217).
+
+-------------------------------------------------------------------
+Tue Jun 25 12:12:23 CEST 2002 - kkaempf@suse.de
+
+- Evaluate keys in map constants (#16701).
+
