@@ -81,6 +81,8 @@ class SUSEChangeLog
     item = nil
     expect = :header
     io.each_line do |line|
+      puts expect.to_s.upcase[0..3] + line if ENV["DEBUG"]
+
       case expect
       when :header
         if line != SUSEChange::HEADER_NEWLINE
@@ -88,6 +90,7 @@ class SUSEChangeLog
         end
         expect = :timestamp_author
       when :timestamp_author
+        next if line =~ /^\s*$/
         if line =~ /^([^-]*) - (.*)/
           item = SUSEChange.new
           item.lineno = io.lineno
