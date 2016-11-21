@@ -1,3 +1,14 @@
+Changelog Chew
+==============
+
+SUSE Linux uses the RPM package format. Each RPM has a changelog, normally
+kept as a `%changelog` section in its `*.spec` file. A SUSE
+specialty is keeping this changelog in a separate `*.changes` file.
+
+Often this `*.changes` file is kept in Git, and merge conflicts
+occur. **`suse-changelog-merge`** is a semantic merge tool to help with this.
+
+
 Installation
 ------------
 
